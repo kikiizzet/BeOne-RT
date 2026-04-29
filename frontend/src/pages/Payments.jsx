@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { CreditCard, CheckCircle, Filter, Plus, Trash2, AlertCircle } from 'lucide-react';
+import { CreditCard, CheckCircle, Filter, Plus, Trash2, AlertCircle, Loader2 } from 'lucide-react';
 import api from '../api/axios';
+import ConfirmModal from '../components/ConfirmModal';
+import Toast from '../components/Toast';
+import Skeleton from '../components/Skeleton';
 
 const Payments = () => {
   const [activeTab, setActiveTab] = useState('status'); // 'history' or 'status'
@@ -10,8 +13,12 @@ const Payments = () => {
   const [houses, setHouses] = useState([]);
   const [showModal, setShowModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   
+  // Feedback states
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [confirm, setConfirm] = useState({ isOpen: false, title: '', message: '', onConfirm: () => {} });
+
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth() + 1);
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
 
@@ -31,10 +38,17 @@ const Payments = () => {
     year: currentYear
   });
 
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+  };
+
   useEffect(() => {
-    fetchPayments();
-    fetchHouses();
-    fetchBillingStatus();
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([fetchPayments(), fetchHouses(), fetchBillingStatus()]);
+      setLoading(false);
+    };
+    loadData();
   }, [currentMonth, currentYear]);
 
   const fetchPayments = async () => {
@@ -47,19 +61,26 @@ const Payments = () => {
   };
 
   const handleDeleteAll = async () => {
-    if (!window.confirm('PERINGATAN: Apakah Anda yakin ingin menghapus SEMUA riwayat transaksi? Tindakan ini tidak dapat dibatalkan.')) return;
-    setLoading(true);
-    try {
-      await api.delete('/payments/bulk-delete');
-      fetchPayments();
-      fetchBillingStatus();
-      alert('Semua riwayat transaksi berhasil dihapus');
-    } catch (error) {
-      console.error(error);
-      alert('Gagal menghapus transaksi');
-    } finally {
-      setLoading(false);
-    }
+    setConfirm({
+      isOpen: true,
+      title: 'Hapus Semua Data',
+      message: 'PERINGATAN: Apakah Anda yakin ingin menghapus SEMUA riwayat transaksi? Tindakan ini tidak dapat dibatalkan.',
+      onConfirm: async () => {
+        const prevLoading = loading;
+        setLoading(true);
+        try {
+          await api.delete('/payments/bulk-delete');
+          fetchPayments();
+          fetchBillingStatus();
+          showToast('Semua riwayat transaksi berhasil dihapus');
+        } catch (error) {
+          console.error(error);
+          showToast('Gagal menghapus transaksi', 'error');
+        } finally {
+          setLoading(prevLoading);
+        }
+      }
+    });
   };
 
   const fetchBillingStatus = async () => {
@@ -83,38 +104,42 @@ const Payments = () => {
 
   const handleConfirmPayment = async (houseId, residentId, type, amount, paymentId = null) => {
     const label = type.charAt(0).toUpperCase() + type.slice(1);
-    if (!window.confirm(`Konfirmasi pembayaran ${label} sebesar Rp ${amount.toLocaleString()}?`)) return;
     
-    setLoading(true);
-    try {
-      if (paymentId) {
-        // If it exists as pending, confirm it
-        await api.put(`/payments/${paymentId}/confirm`);
-      } else {
-        // If it doesn't exist (satpam/kebersihan), create as paid
-        await api.post('/payments', {
-          house_id: houseId,
-          resident_id: residentId,
-          fee_type: type,
-          amount: amount,
-          payment_date: new Date().toISOString().split('T')[0],
-          month: currentMonth,
-          year: currentYear
-        });
+    setConfirm({
+      isOpen: true,
+      title: 'Konfirmasi Pembayaran',
+      message: `Konfirmasi pembayaran ${label} sebesar Rp ${amount.toLocaleString()}?`,
+      onConfirm: async () => {
+        const prevLoading = loading;
+        setLoading(true);
+        try {
+          if (paymentId) {
+            await api.put(`/payments/${paymentId}/confirm`);
+          } else {
+            await api.post('/payments', {
+              house_id: houseId,
+              resident_id: residentId,
+              fee_type: type,
+              amount: amount,
+              payment_date: new Date().toISOString().split('T')[0],
+              month: currentMonth,
+              year: currentYear
+            });
+          }
+          showToast(`Pembayaran ${label} berhasil dikonfirmasi`);
+          fetchBillingStatus();
+          fetchPayments();
+        } catch (error) {
+          console.error(error);
+          showToast('Gagal mengkonfirmasi pembayaran', 'error');
+        } finally {
+          setLoading(prevLoading);
+        }
       }
-      fetchBillingStatus();
-      fetchPayments();
-    } catch (error) {
-      console.error(error);
-      alert('Gagal mengkonfirmasi pembayaran');
-    } finally {
-      setLoading(false);
-    }
+    });
   };
 
   const handleBulkConfirm = async (type) => {
-    if (!window.confirm(`Konfirmasi LUNAS semua tagihan ${type.toUpperCase()} bulan ini?`)) return;
-    
     let amount = 0;
     if (type === 'satpam') amount = 100000;
     else if (type === 'kebersihan') amount = 15000;
@@ -123,53 +148,66 @@ const Payments = () => {
       if (item) amount = item.fees[type].amount;
     }
 
-    setLoading(true);
-    try {
-      await api.post('/payments/bulk-confirm', {
-        fee_type: type,
-        amount: amount,
-        month: currentMonth,
-        year: currentYear
-      });
-      fetchBillingStatus();
-      fetchPayments();
-      alert(`Semua tagihan ${type} berhasil dikonfirmasi`);
-    } catch (error) {
-      console.error(error);
-      alert('Gagal melakukan konfirmasi massal');
-    } finally {
-      setLoading(false);
-    }
+    setConfirm({
+      isOpen: true,
+      title: 'Konfirmasi Massal',
+      message: `Konfirmasi LUNAS semua tagihan ${type.toUpperCase()} bulan ini?`,
+      onConfirm: async () => {
+        const prevLoading = loading;
+        setLoading(true);
+        try {
+          await api.post('/payments/bulk-confirm', {
+            fee_type: type,
+            amount: amount,
+            month: currentMonth,
+            year: currentYear
+          });
+          fetchBillingStatus();
+          fetchPayments();
+          showToast(`Semua tagihan ${type} berhasil dikonfirmasi`);
+        } catch (error) {
+          console.error(error);
+          showToast('Gagal melakukan konfirmasi massal', 'error');
+        } finally {
+          setLoading(prevLoading);
+        }
+      }
+    });
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    const prevLoading = loading;
     setLoading(true);
     
     const house = houses.find(h => h.id === parseInt(formData.house_id));
     if (!house || !house.residents || house.residents.length === 0) {
-      alert('Rumah tidak memiliki penghuni aktif');
-      setLoading(false);
+      showToast('Rumah tidak memiliki penghuni aktif', 'error');
+      setLoading(prevLoading);
       return;
     }
 
     try {
       await api.post('/payments', {
         ...formData,
-        resident_id: house.residents[0].id
+        resident_id: house.residents[0].id,
+        status: 'paid'
       });
+      showToast('Pembayaran berhasil dicatat');
       setShowModal(false);
       fetchPayments();
       fetchBillingStatus();
     } catch (error) {
       console.error(error);
+      showToast('Gagal mencatat pembayaran', 'error');
     } finally {
-      setLoading(false);
+      setLoading(prevLoading);
     }
   };
 
   const handleBulkSubmit = async (e) => {
     e.preventDefault();
+    const prevLoading = loading;
     setLoading(true);
     try {
       const houseIds = houses.map(h => h.id);
@@ -180,31 +218,73 @@ const Payments = () => {
         month: bulkData.month,
         year: bulkData.year
       });
+      showToast(`Tagihan "${bulkData.fee_type}" berhasil dibuat`);
       setShowBulkModal(false);
       fetchPayments();
       fetchBillingStatus();
-      alert(`Tagihan "${bulkData.fee_type}" berhasil dibuat untuk semua penghuni (Status: Pending)`);
     } catch (error) {
       console.error(error);
+      showToast('Gagal membuat tagihan kustom', 'error');
     } finally {
-      setLoading(false);
+      setLoading(prevLoading);
     }
   };
 
   const handleDeletePayment = async (id) => {
-    if (!window.confirm('Apakah Anda yakin ingin menghapus transaksi ini? Data yang dihapus tidak dapat dikembalikan.')) return;
-    setLoading(true);
-    try {
-      await api.delete(`/payments/${id}`);
-      fetchPayments();
-      fetchBillingStatus();
-    } catch (error) {
-      console.error(error);
-      alert('Gagal menghapus transaksi');
-    } finally {
-      setLoading(false);
-    }
+    setConfirm({
+      isOpen: true,
+      title: 'Hapus Transaksi',
+      message: 'Apakah Anda yakin ingin menghapus transaksi ini?',
+      onConfirm: async () => {
+        const prevLoading = loading;
+        setLoading(true);
+        try {
+          await api.delete(`/payments/${id}`);
+          showToast('Transaksi berhasil dihapus');
+          fetchPayments();
+          fetchBillingStatus();
+        } catch (error) {
+          console.error(error);
+          showToast('Gagal menghapus transaksi', 'error');
+        } finally {
+          setLoading(prevLoading);
+        }
+      }
+    });
   };
+
+  // ... (UI starts here)
+
+  // Skeleton rows for status table
+  const StatusSkeletons = () => (
+    [...Array(5)].map((_, i) => (
+      <tr key={i}>
+        <td className="px-6 py-4"><Skeleton className="h-4 w-8" /></td>
+        <td className="px-6 py-4"><Skeleton className="h-4 w-32" /></td>
+        <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+        <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+        {customTypes.map(t => <td key={t} className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>)}
+      </tr>
+    ))
+  );
+
+  // Skeleton rows for history table
+  const HistorySkeletons = () => (
+    [...Array(5)].map((_, i) => (
+      <tr key={i}>
+        <td className="px-6 py-4"><Skeleton className="h-4 w-8" /></td>
+        <td className="px-6 py-4 flex items-center gap-3">
+          <Skeleton className="w-8 h-8 rounded-full" />
+          <Skeleton className="h-4 w-24" />
+        </td>
+        <td className="px-6 py-4"><Skeleton className="h-4 w-16" /></td>
+        <td className="px-6 py-4"><Skeleton className="h-4 w-20" /></td>
+        <td className="px-6 py-4"><Skeleton className="h-4 w-24" /></td>
+        <td className="px-6 py-4"><Skeleton className="h-4 w-16" /></td>
+        <td className="px-6 py-4"><Skeleton className="h-4 w-8 ml-auto" /></td>
+      </tr>
+    ))
+  );
 
   const months = [
     'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
@@ -213,65 +293,28 @@ const Payments = () => {
 
   return (
     <div className="space-y-6">
+      {/* ... header and tabs ... */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-main">Iuran Bulanan</h1>
           <p className="text-text-muted mt-1 text-sm">Monitoring dan penagihan iuran warga</p>
         </div>
         <div className="flex gap-2">
-          <button 
-            onClick={() => {
-              setBulkData({ ...bulkData, month: currentMonth, year: currentYear });
-              setShowBulkModal(true);
-            }}
-            className="px-4 py-2 bg-purple-50 text-purple-600 border border-purple-100 rounded-md text-sm font-bold hover:bg-purple-100 transition-colors"
-          >
-            Tagihan Kustom
-          </button>
-          <button 
-            onClick={() => {
-              setFormData({ ...formData, month: currentMonth, year: currentYear });
-              setShowModal(true);
-            }}
-            className="btn-primary"
-          >
-            <Plus size={18} />
-            Catat Manual
-          </button>
+          <button onClick={() => { setBulkData({ ...bulkData, month: currentMonth, year: currentYear }); setShowBulkModal(true); }} className="px-4 py-2 bg-purple-50 text-purple-600 border border-purple-100 rounded-md text-sm font-bold hover:bg-purple-100 transition-colors">Tagihan Kustom</button>
+          <button onClick={() => { setFormData({ ...formData, month: currentMonth, year: currentYear }); setShowModal(true); }} className="btn-primary"><Plus size={18} /> Catat Manual</button>
         </div>
       </div>
 
       <div className="flex items-center gap-4 bg-white p-1 rounded-lg border border-border w-fit">
-        <button 
-          onClick={() => setActiveTab('status')}
-          className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'status' ? 'bg-primary text-white shadow-sm' : 'text-text-muted hover:text-text-main'}`}
-        >
-          Status Tagihan
-        </button>
-        <button 
-          onClick={() => setActiveTab('history')}
-          className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'history' ? 'bg-primary text-white shadow-sm' : 'text-text-muted hover:text-text-main'}`}
-        >
-          Riwayat Transaksi
-        </button>
+        <button onClick={() => setActiveTab('status')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'status' ? 'bg-primary text-white shadow-sm' : 'text-text-muted hover:text-text-main'}`}>Status Tagihan</button>
+        <button onClick={() => setActiveTab('history')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'history' ? 'bg-primary text-white shadow-sm' : 'text-text-muted hover:text-text-main'}`}>Riwayat Transaksi</button>
       </div>
 
       <div className="flex items-center gap-3 mb-2">
-        <select 
-          className="bg-white border border-border rounded px-3 py-1.5 text-sm font-medium outline-none focus:border-primary"
-          value={currentMonth}
-          onChange={(e) => setCurrentMonth(parseInt(e.target.value))}
-        >
-          {months.map((m, i) => (
-            <option key={i} value={i + 1}>{m}</option>
-          ))}
+        <select className="bg-white border border-border rounded px-3 py-1.5 text-sm font-medium outline-none focus:border-primary" value={currentMonth} onChange={(e) => setCurrentMonth(parseInt(e.target.value))}>
+          {months.map((m, i) => <option key={i} value={i + 1}>{m}</option>)}
         </select>
-        <input 
-          type="number" 
-          className="bg-white border border-border rounded px-3 py-1.5 text-sm font-medium w-24 outline-none focus:border-primary"
-          value={currentYear}
-          onChange={(e) => setCurrentYear(parseInt(e.target.value))}
-        />
+        <input type="number" className="bg-white border border-border rounded px-3 py-1.5 text-sm font-medium w-24 outline-none focus:border-primary" value={currentYear} onChange={(e) => setCurrentYear(parseInt(e.target.value))} />
       </div>
 
       {activeTab === 'status' ? (
@@ -305,12 +348,10 @@ const Payments = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {billingStatus.map((item) => (
+                {loading ? <StatusSkeletons /> : billingStatus.map((item) => (
                   <tr key={item.house_id} className="hover:bg-gray-50 transition-colors text-sm">
                     <td className="px-6 py-4 font-bold text-text-main">#{item.house_number}</td>
                     <td className="px-6 py-4 text-text-muted truncate max-w-[150px]">{item.resident?.full_name || '-'}</td>
-                    
-                    {/* Fixed Fees */}
                     {['satpam', 'kebersihan'].map(key => (
                       <td key={key} className="px-6 py-4">
                         {item.fees[key].status === 'paid' ? (
@@ -318,18 +359,10 @@ const Payments = () => {
                             <CheckCircle size={10} /> Lunas
                           </span>
                         ) : (
-                          <button 
-                            disabled={loading || !item.resident}
-                            onClick={() => handleConfirmPayment(item.house_id, item.resident.id, key, item.fees[key].amount, item.fees[key].payment_id)}
-                            className="text-[9px] font-bold uppercase bg-blue-50 text-blue-600 px-2.5 py-0.5 rounded border border-blue-100 hover:bg-blue-600 hover:text-white transition-all disabled:opacity-30"
-                          >
-                            Konfirmasi
-                          </button>
+                          <button disabled={!item.resident} onClick={() => handleConfirmPayment(item.house_id, item.resident.id, key, item.fees[key].amount, item.fees[key].payment_id)} className="text-[9px] font-bold uppercase bg-blue-50 text-blue-600 px-2.5 py-0.5 rounded border border-blue-100 hover:bg-blue-600 hover:text-white transition-all disabled:opacity-30">Konfirmasi</button>
                         )}
                       </td>
                     ))}
-
-                    {/* Custom Fees */}
                     {customTypes.map(type => (
                       <td key={type} className="px-6 py-4">
                         {item.fees[type].status === 'paid' ? (
@@ -337,13 +370,7 @@ const Payments = () => {
                             <CheckCircle size={10} /> Lunas
                           </span>
                         ) : item.fees[type].status === 'pending' ? (
-                          <button 
-                            disabled={loading}
-                            onClick={() => handleConfirmPayment(item.house_id, item.resident.id, type, item.fees[type].amount, item.fees[type].payment_id)}
-                            className="text-[9px] font-bold uppercase bg-purple-50 text-purple-600 px-2.5 py-0.5 rounded border border-purple-100 hover:bg-purple-600 hover:text-white transition-all disabled:opacity-30"
-                          >
-                            Konfirmasi
-                          </button>
+                          <button onClick={() => handleConfirmPayment(item.house_id, item.resident.id, type, item.fees[type].amount, item.fees[type].payment_id)} className="text-[9px] font-bold uppercase bg-purple-50 text-purple-600 px-2.5 py-0.5 rounded border border-purple-100 hover:bg-purple-600 hover:text-white transition-all disabled:opacity-30">Konfirmasi</button>
                         ) : (
                           <span className="text-[9px] text-text-muted italic">-</span>
                         )}
@@ -359,13 +386,7 @@ const Payments = () => {
         <div className="glass-card overflow-hidden">
           <div className="p-4 border-b border-border flex items-center justify-between bg-gray-50">
             <h3 className="text-base font-bold text-text-main">Riwayat Transaksi</h3>
-            <button 
-              onClick={handleDeleteAll}
-              className="px-3 py-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 text-xs font-bold border border-red-100 transition-colors flex items-center gap-2"
-            >
-              <Trash2 size={14} />
-              Hapus Semua Data
-            </button>
+            <button onClick={handleDeleteAll} className="px-3 py-1.5 rounded bg-red-50 text-red-600 hover:bg-red-100 hover:text-red-700 text-xs font-bold border border-red-100 transition-colors flex items-center gap-2"><Trash2 size={14} /> Hapus Semua Data</button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -381,53 +402,17 @@ const Payments = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {payments.length > 0 ? (
-                  payments.map((p) => (
-                    <tr key={p.id} className="hover:bg-gray-50 transition-colors text-sm">
-                      <td className="px-6 py-4 font-bold text-text-main">#{p.house.house_number}</td>
-                      <td className="px-6 py-4 flex items-center gap-3">
-                        <div className="w-8 h-8 rounded bg-gray-100 text-text-muted flex items-center justify-center text-xs font-bold border border-border">
-                          {p.resident.full_name.charAt(0)}
-                        </div>
-                        <span className="text-text-main font-medium">{p.resident.full_name}</span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${
-                          p.fee_type === 'satpam' ? 'bg-blue-50 text-blue-700 border-blue-100' : 
-                          p.fee_type === 'kebersihan' ? 'bg-pink-50 text-pink-700 border-pink-100' :
-                          'bg-purple-50 text-purple-700 border-purple-100'
-                        }`}>
-                          {p.fee_type}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="text-text-main font-medium">{months[p.month - 1]} {p.year}</span>
-                      </td>
-                      <td className="px-6 py-4 font-bold text-text-main">Rp {parseFloat(p.amount).toLocaleString()}</td>
-                      <td className="px-6 py-4">
-                        <div className={`inline-flex items-center gap-1.5 font-bold text-[10px] uppercase px-2 py-1 rounded border ${
-                          p.status === 'paid' ? 'text-green-600 bg-green-50 border-green-100' : 'text-orange-600 bg-orange-50 border-orange-100'
-                        }`}>
-                          {p.status === 'paid' ? <CheckCircle size={12} /> : <AlertCircle size={12} />}
-                          {p.status === 'paid' ? 'Lunas' : 'Pending'}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <button
-                          onClick={() => handleDeletePayment(p.id)}
-                          className="p-1.5 rounded text-text-muted hover:text-red-600 hover:bg-red-50 transition-colors"
-                          title="Hapus Transaksi"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="6" className="px-6 py-12 text-center text-text-muted italic">Belum ada data.</td>
+                {loading ? <HistorySkeletons /> : payments.length > 0 ? payments.map((p) => (
+                  <tr key={p.id} className="hover:bg-gray-50 transition-colors text-sm">
+                    <td className="px-6 py-4 font-bold text-text-main">#{p.house.house_number}</td>
+                    <td className="px-6 py-4 flex items-center gap-3"><div className="w-8 h-8 rounded bg-gray-100 text-text-muted flex items-center justify-center text-xs font-bold border border-border">{p.resident.full_name.charAt(0)}</div><span className="text-text-main font-medium">{p.resident.full_name}</span></td>
+                    <td className="px-6 py-4"><span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded border ${p.fee_type === 'satpam' ? 'bg-blue-50 text-blue-700 border-blue-100' : p.fee_type === 'kebersihan' ? 'bg-pink-50 text-pink-700 border-pink-100' : 'bg-purple-50 text-purple-700 border-purple-100'}`}>{p.fee_type}</span></td>
+                    <td className="px-6 py-4"><span className="text-text-main font-medium">{months[p.month - 1]} {p.year}</span></td>
+                    <td className="px-6 py-4 font-bold text-text-main">Rp {parseFloat(p.amount).toLocaleString()}</td>
+                    <td className="px-6 py-4"><div className={`inline-flex items-center gap-1.5 font-bold text-[10px] uppercase px-2 py-1 rounded border ${p.status === 'paid' ? 'text-green-600 bg-green-50 border-green-100' : 'text-orange-600 bg-orange-50 border-orange-100'}`}>{p.status === 'paid' ? <CheckCircle size={12} /> : <AlertCircle size={12} />} {p.status === 'paid' ? 'Lunas' : 'Pending'}</div></td>
+                    <td className="px-6 py-4 text-right"><button onClick={() => handleDeletePayment(p.id)} className="p-1.5 rounded text-text-muted hover:text-red-600 hover:bg-red-50 transition-colors" title="Hapus Transaksi"><Trash2 size={16} /></button></td>
                   </tr>
-                )}
+                )) : <tr><td colSpan="7" className="px-6 py-12 text-center text-text-muted italic">Belum ada data.</td></tr>}
               </tbody>
             </table>
           </div>
@@ -509,6 +494,27 @@ const Payments = () => {
           </form>
         </div>
       )}
+
+      {/* Feedback UI */}
+      <div className="fixed bottom-6 right-6 z-[300] flex flex-col gap-2">
+        {toast.show && (
+          <Toast 
+            message={toast.message} 
+            type={toast.type} 
+            onClose={() => setToast({ ...toast, show: false })} 
+          />
+        )}
+      </div>
+
+      <ConfirmModal 
+        isOpen={confirm.isOpen}
+        onClose={() => setConfirm({ ...confirm, isOpen: false })}
+        onConfirm={confirm.onConfirm}
+        title={confirm.title}
+        message={confirm.message}
+        confirmText="Ya, Lanjutkan"
+        type={confirm.title.includes('Hapus') ? 'danger' : 'primary'}
+      />
     </div>
   );
 };

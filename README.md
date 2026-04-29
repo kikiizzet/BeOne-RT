@@ -1,5 +1,5 @@
 <<<<<<< HEAD
-# BeOne-RT
+# BeOn-RT
 =======
 # Sistem Manajemen RT Elite (Beon Case Study)
 

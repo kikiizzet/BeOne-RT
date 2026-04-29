@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Home, UserPlus, History, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
 import api from '../api/axios';
+import ConfirmModal from '../components/ConfirmModal';
+import Toast from '../components/Toast';
+import Skeleton from '../components/Skeleton';
 
 const Houses = () => {
   const [houses, setHouses] = useState([]);
@@ -8,11 +11,24 @@ const Houses = () => {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({ resident_id: '', start_date: '' });
 
+  // Feedback states
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [confirm, setConfirm] = useState({ isOpen: false, id: null, number: '' });
+
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+  };
+
   useEffect(() => {
-    fetchHouses();
-    fetchResidents();
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([fetchHouses(), fetchResidents()]);
+      setLoading(false);
+    };
+    loadData();
   }, []);
 
   const fetchHouses = async () => {
@@ -21,6 +37,7 @@ const Houses = () => {
       setHouses(res.data);
     } catch (error) {
       console.error(error);
+      showToast('Gagal memuat data rumah', 'error');
     }
   };
 
@@ -35,24 +52,42 @@ const Houses = () => {
 
   const handleAssign = async (e) => {
     e.preventDefault();
+    setLoading(true);
     try {
       await api.post(`/houses/${selectedHouse.id}/assign`, formData);
+      showToast(`Rumah No. ${selectedHouse.house_number} berhasil dihuni`);
       setShowAssignModal(false);
       fetchHouses();
       setFormData({ resident_id: '', start_date: '' });
     } catch (error) {
       console.error(error);
+      showToast('Gagal memproses penempatan rumah', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleDeleteHouse = async (id, number) => {
-    if (!window.confirm(`Hapus rumah No. ${number}? Data tidak dapat dikembalikan.`)) return;
+    setConfirm({
+      isOpen: true,
+      id: id,
+      number: number
+    });
+  };
+
+  const executeDelete = async () => {
+    const { id, number } = confirm;
+    setLoading(true);
     try {
       await api.delete(`/houses/${id}`);
+      showToast(`Rumah No. ${number} berhasil dihapus`);
       fetchHouses();
     } catch (error) {
       console.error(error);
-      alert('Gagal menghapus rumah. Pastikan tidak ada transaksi atau riwayat yang terkait.');
+      showToast('Gagal menghapus rumah. Pastikan tidak ada transaksi terkait.', 'error');
+    } finally {
+      setLoading(false);
+      setConfirm({ ...confirm, isOpen: false });
     }
   };
 
@@ -64,67 +99,92 @@ const Houses = () => {
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-        {houses.map((house) => (
-          <div key={house.id} className="glass-card p-4 flex flex-col hover:border-primary/30">
-            <div className="flex items-center justify-between mb-3">
-              <div className={`w-10 h-10 rounded flex items-center justify-center ${
-                house.status === 'dihuni' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'
-              }`}>
-                <Home size={20} />
+        {loading ? (
+          [...Array(10)].map((_, i) => (
+            <div key={i} className="glass-card p-4 space-y-4">
+              <div className="flex justify-between">
+                <Skeleton className="w-10 h-10 rounded" />
+                <Skeleton className="w-12 h-4" />
               </div>
-              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
-                house.status === 'dihuni' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-              }`}>
-                {house.status === 'dihuni' ? 'Terisi' : 'Kosong'}
-              </span>
-            </div>
-            
-            <h3 className="text-xl font-bold text-text-main mb-1">No. {house.house_number}</h3>
-            <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-4">Tipe Standar</p>
-
-            <div className="mt-auto space-y-3">
-              {house.residents && house.residents.length > 0 ? (
-                <div className="p-2 rounded bg-gray-50 border border-border">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <p className="text-[9px] text-text-muted uppercase font-bold">Penghuni</p>
-                    <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                      house.residents[0].status === 'tetap' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
-                    }`}>
-                      {house.residents[0].status === 'tetap' ? 'Tetap' : 'Kontrak'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-text-main font-bold truncate">{house.residents[0].full_name}</p>
-                </div>
-              ) : (
-                <div className="p-2 rounded border border-dashed border-border flex items-center justify-center bg-gray-50 h-[42px]">
-                  <p className="text-[10px] text-text-muted font-bold">Belum Ada</p>
-                </div>
-              )}
-
+              <div className="space-y-2">
+                <Skeleton className="h-6 w-3/4" />
+                <Skeleton className="h-3 w-1/2" />
+              </div>
+              <Skeleton className="h-12 w-full rounded" />
               <div className="flex gap-1.5">
-                <button 
-                  onClick={() => { setSelectedHouse(house); setShowAssignModal(true); }}
-                  className="flex-1 py-1.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold uppercase hover:bg-blue-100 transition-all border border-blue-100"
-                >
-                  Huni
-                </button>
-                <button 
-                  onClick={() => { setSelectedHouse(house); setShowDetailModal(true); }}
-                  className="flex-1 py-1.5 rounded bg-purple-50 text-purple-600 text-[10px] font-bold uppercase hover:bg-purple-100 transition-all border border-purple-100"
-                >
-                  Detail
-                </button>
-                <button 
-                  onClick={() => handleDeleteHouse(house.id, house.house_number)}
-                  className="px-2 py-1.5 rounded bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors border border-red-100"
-                  title="Hapus Rumah"
-                >
-                  <Trash2 size={14} />
-                </button>
+                <Skeleton className="h-8 flex-1" />
+                <Skeleton className="h-8 flex-1" />
+                <Skeleton className="h-8 w-8" />
               </div>
             </div>
+          ))
+        ) : houses.length > 0 ? (
+          houses.map((house) => (
+            <div key={house.id} className="glass-card p-4 flex flex-col hover:border-primary/30">
+              <div className="flex items-center justify-between mb-3">
+                <div className={`w-10 h-10 rounded flex items-center justify-center ${
+                  house.status === 'dihuni' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  <Home size={20} />
+                </div>
+                <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
+                  house.status === 'dihuni' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {house.status === 'dihuni' ? 'Terisi' : 'Kosong'}
+                </span>
+              </div>
+              
+              <h3 className="text-xl font-bold text-text-main mb-1">No. {house.house_number}</h3>
+              <p className="text-[10px] font-bold text-text-muted uppercase tracking-wider mb-4">Tipe Standar</p>
+
+              <div className="mt-auto space-y-3">
+                {house.residents && house.residents.length > 0 ? (
+                  <div className="p-2 rounded bg-gray-50 border border-border">
+                    <div className="flex items-center justify-between mb-0.5">
+                      <p className="text-[9px] text-text-muted uppercase font-bold">Penghuni</p>
+                      <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${
+                        house.residents[0].status === 'tetap' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
+                      }`}>
+                        {house.residents[0].status === 'tetap' ? 'Tetap' : 'Kontrak'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-text-main font-bold truncate">{house.residents[0].full_name}</p>
+                  </div>
+                ) : (
+                  <div className="p-2 rounded border border-dashed border-border flex items-center justify-center bg-gray-50 h-[42px]">
+                    <p className="text-[10px] text-text-muted font-bold">Belum Ada</p>
+                  </div>
+                )}
+
+                <div className="flex gap-1.5">
+                  <button 
+                    onClick={() => { setSelectedHouse(house); setShowAssignModal(true); }}
+                    className="flex-1 py-1.5 rounded bg-blue-50 text-blue-600 text-[10px] font-bold uppercase hover:bg-blue-100 transition-all border border-blue-100"
+                  >
+                    Huni
+                  </button>
+                  <button 
+                    onClick={() => { setSelectedHouse(house); setShowDetailModal(true); }}
+                    className="flex-1 py-1.5 rounded bg-purple-50 text-purple-600 text-[10px] font-bold uppercase hover:bg-purple-100 transition-all border border-purple-100"
+                  >
+                    Detail
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteHouse(house.id, house.house_number)}
+                    className="px-2 py-1.5 rounded bg-red-50 text-red-500 hover:bg-red-100 hover:text-red-700 transition-colors border border-red-100"
+                    title="Hapus Rumah"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="col-span-full py-12 text-center text-text-muted italic border border-dashed rounded-lg bg-gray-50/50">
+            Belum ada data rumah.
           </div>
-        ))}
+        )}
       </div>
 
       {showAssignModal && (
@@ -244,9 +304,29 @@ const Houses = () => {
           </div>
         </div>
       )}
+
+      {/* Feedback UI */}
+      <div className="fixed bottom-6 right-6 z-[300] flex flex-col gap-2">
+        {toast.show && (
+          <Toast 
+            message={toast.message} 
+            type={toast.type} 
+            onClose={() => setToast({ ...toast, show: false })} 
+          />
+        )}
+      </div>
+
+      <ConfirmModal 
+        isOpen={confirm.isOpen}
+        onClose={() => setConfirm({ ...confirm, isOpen: false })}
+        onConfirm={executeDelete}
+        title="Hapus Rumah"
+        message={`Apakah Anda yakin ingin menghapus rumah No. ${confirm.number}? Semua data riwayat terkait mungkin akan terpengaruh.`}
+        confirmText="Ya, Hapus"
+        type="danger"
+      />
     </div>
   );
 };
-
 
 export default Houses;

@@ -1,13 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  Users, Home, TrendingUp, Wallet, ArrowUpRight, ArrowDownRight 
+  Users, Home, TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, Loader2 
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
+import Skeleton from '../components/Skeleton';
 
 const Dashboard = () => {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  // ... (rest of the states)
   const [summary, setSummary] = useState({
     total_residents: 0,
     occupied_houses: 0,
@@ -21,8 +26,14 @@ const Dashboard = () => {
   const [chartData, setChartData] = useState([]);
 
   useEffect(() => {
-    fetchSummary();
-    fetchChartData();
+    const loadData = async () => {
+      setLoading(true);
+      // Artificial delay to show skeletons (optional for demo, but good for UX testing)
+      // await new Promise(resolve => setTimeout(resolve, 1000));
+      await Promise.all([fetchSummary(), fetchChartData()]);
+      setLoading(false);
+    };
+    loadData();
   }, []);
 
   const fetchSummary = async () => {
@@ -37,22 +48,16 @@ const Dashboard = () => {
   const fetchChartData = async () => {
     try {
       const res = await api.get('/dashboard/charts');
-      // Initialize 12 months
       const allMonths = Array.from({ length: 12 }, (_, i) => i + 1);
-      
       const formatted = allMonths.map(month => {
         const incomeItem = res.data.income.find(i => parseInt(i.month) === month);
         const expenseItem = res.data.expenses.find(e => parseInt(e.month) === month);
-        
         return {
           name: `Bulan ${month}`,
           income: incomeItem ? parseFloat(incomeItem.total) : 0,
           expenses: expenseItem ? parseFloat(expenseItem.total) : 0
         };
       });
-      
-      // Filter out trailing zero months if we only want up to current month or let it show all year
-      // Showing all 12 months is standard for a yearly vieww
       setChartData(formatted);
     } catch (error) {
       console.error(error);
@@ -60,10 +65,10 @@ const Dashboard = () => {
   };
 
   const stats = [
-    { label: 'Total Warga', value: summary.total_residents, icon: <Users size={20} />, color: 'bg-blue-100 text-blue-600' },
-    { label: 'Total Saldo', value: `Rp ${parseFloat(summary.balance || 0).toLocaleString('id-ID')}`, icon: <Wallet size={20} />, color: 'bg-purple-100 text-purple-600' },
-    { label: 'Pemasukan', value: `Rp ${parseFloat(summary.total_income || 0).toLocaleString('id-ID')}`, icon: <TrendingUp size={20} />, color: 'bg-green-100 text-green-600' },
-    { label: 'Pengeluaran', value: `Rp ${parseFloat(summary.total_expenses || 0).toLocaleString('id-ID')}`, icon: <TrendingUp size={20} className="rotate-180" />, color: 'bg-red-100 text-red-600' },
+    { label: 'Total Warga', value: summary.total_residents, icon: <Users size={20} />, color: 'bg-blue-100 text-blue-600', path: '/residents' },
+    { label: 'Total Saldo', value: `Rp ${parseFloat(summary.balance || 0).toLocaleString('id-ID')}`, icon: <Wallet size={20} />, color: 'bg-purple-100 text-purple-600', path: '/payments' },
+    { label: 'Pemasukan', value: `Rp ${parseFloat(summary.total_income || 0).toLocaleString('id-ID')}`, icon: <TrendingUp size={20} />, color: 'bg-green-100 text-green-600', path: '/payments' },
+    { label: 'Pengeluaran', value: `Rp ${parseFloat(summary.total_expenses || 0).toLocaleString('id-ID')}`, icon: <TrendingUp size={20} className="rotate-180" />, color: 'bg-red-100 text-red-600', path: '/expenses' },
   ];
 
   return (
@@ -74,59 +79,81 @@ const Dashboard = () => {
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat, i) => (
-          <div key={i} className="glass-card p-4 flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center`}>
-              {stat.icon}
+        {loading ? (
+          [...Array(4)].map((_, i) => (
+            <div key={i} className="glass-card p-4 flex items-center gap-4">
+              <Skeleton className="w-12 h-12 rounded-lg" />
+              <div className="space-y-2 flex-1">
+                <Skeleton className="h-3 w-1/2" />
+                <Skeleton className="h-6 w-3/4" />
+              </div>
             </div>
-            <div>
-              <p className="text-xs text-text-muted font-medium">{stat.label}</p>
-              <h3 className="text-xl font-bold text-text-main">{stat.value}</h3>
+          ))
+        ) : (
+          stats.map((stat, i) => (
+            <div 
+              key={i} 
+              onClick={() => navigate(stat.path)}
+              className="glass-card p-4 flex items-center gap-4 cursor-pointer hover:border-primary group transition-all"
+            >
+              <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                {stat.icon}
+              </div>
+              <div>
+                <p className="text-xs text-text-muted font-medium">{stat.label}</p>
+                <h3 className="text-xl font-bold text-text-main">{stat.value}</h3>
+              </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 glass-card p-6">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-text-main">Grafik Keuangan</h3>
-            <div className="flex gap-4 text-xs font-medium">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                <span className="text-text-muted">Pemasukan</span>
+            {loading ? <Skeleton className="h-4 w-32" /> : (
+              <div className="flex gap-4 text-xs font-medium">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                  <span className="text-text-muted">Pemasukan</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full bg-red-400"></div>
+                  <span className="text-text-muted">Pengeluaran</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full bg-red-400"></div>
-                <span className="text-text-muted">Pengeluaran</span>
-              </div>
-            </div>
+            )}
           </div>
           
           <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0d6efd" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#0d6efd" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#dc3545" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#dc3545" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e9ecef" vertical={false} />
-                <XAxis dataKey="name" stroke="#adb5bd" fontSize={11} tickLine={false} axisLine={false} />
-                <YAxis stroke="#adb5bd" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(val) => `Rp${val/1000}k`} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#fff', border: '1px solid #dee2e6', borderRadius: '4px', fontSize: '12px' }}
-                  formatter={(value, name) => [`Rp ${value.toLocaleString('id-ID')}`, name === 'income' ? 'Pemasukan' : 'Pengeluaran']}
-                />
-                <Area type="monotone" dataKey="income" stroke="#0d6efd" fillOpacity={1} fill="url(#colorIncome)" strokeWidth={2} />
-                <Area type="monotone" dataKey="expenses" stroke="#dc3545" fillOpacity={1} fill="url(#colorExpense)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
+            {loading ? (
+              <Skeleton className="w-full h-full rounded-lg" />
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={chartData}>
+                  <defs>
+                    <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0d6efd" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#0d6efd" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#dc3545" stopOpacity={0.1}/>
+                      <stop offset="95%" stopColor="#dc3545" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e9ecef" vertical={false} />
+                  <XAxis dataKey="name" stroke="#adb5bd" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#adb5bd" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(val) => `Rp${val/1000}k`} />
+                  <Tooltip 
+                    contentStyle={{ backgroundColor: '#fff', border: '1px solid #dee2e6', borderRadius: '4px', fontSize: '12px' }}
+                    formatter={(value, name) => [`Rp ${value.toLocaleString('id-ID')}`, name === 'income' ? 'Pemasukan' : 'Pengeluaran']}
+                  />
+                  <Area type="monotone" dataKey="income" stroke="#0d6efd" fillOpacity={1} fill="url(#colorIncome)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="expenses" stroke="#dc3545" fillOpacity={1} fill="url(#colorExpense)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 

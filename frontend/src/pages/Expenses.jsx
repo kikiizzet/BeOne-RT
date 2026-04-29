@@ -1,49 +1,81 @@
 import React, { useEffect, useState } from 'react';
 import { Receipt, Plus, TrendingDown, Calendar, Trash2 } from 'lucide-react';
 import api from '../api/axios';
+import ConfirmModal from '../components/ConfirmModal';
+import Toast from '../components/Toast';
+import Skeleton from '../components/Skeleton';
 
 const Expenses = () => {
   const [expenses, setExpenses] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     description: '',
     amount: '',
     expense_date: new Date().toISOString().split('T')[0]
   });
 
+  // Feedback states
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
+  const [confirm, setConfirm] = useState({ isOpen: false, id: null });
+
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+  };
+
   useEffect(() => {
     fetchExpenses();
   }, []);
 
   const fetchExpenses = async () => {
+    setLoading(true);
     try {
       const res = await api.get('/expenses');
       setExpenses(res.data);
     } catch (error) {
       console.error(error);
+      showToast('Gagal memuat data pengeluaran', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
     try {
       await api.post('/expenses', formData);
+      showToast('Catatan pengeluaran berhasil disimpan');
       setShowModal(false);
       fetchExpenses();
       setFormData({ description: '', amount: '', expense_date: new Date().toISOString().split('T')[0] });
     } catch (error) {
       console.error(error);
+      showToast('Gagal menyimpan pengeluaran', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
   const deleteExpense = async (id) => {
-    if (window.confirm('Yakin ingin menghapus catatan pengeluaran ini?')) {
-      try {
-        await api.delete(`/expenses/${id}`);
-        fetchExpenses();
-      } catch (error) {
-        console.error(error);
-      }
+    setConfirm({
+      isOpen: true,
+      id: id
+    });
+  };
+
+  const executeDelete = async () => {
+    setLoading(true);
+    try {
+      await api.delete(`/expenses/${confirm.id}`);
+      showToast('Catatan pengeluaran berhasil dihapus');
+      fetchExpenses();
+    } catch (error) {
+      console.error(error);
+      showToast('Gagal menghapus catatan', 'error');
+    } finally {
+      setLoading(false);
+      setConfirm({ ...confirm, isOpen: false });
     }
   };
 
@@ -64,7 +96,25 @@ const Expenses = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {expenses.length > 0 ? (
+        {loading ? (
+          [...Array(6)].map((_, i) => (
+            <div key={i} className="glass-card p-5 space-y-4">
+              <div className="flex justify-between">
+                <Skeleton className="w-10 h-10 rounded" />
+                <Skeleton className="w-16 h-4" />
+              </div>
+              <Skeleton className="h-6 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+              <div className="pt-4 border-t border-border flex justify-between items-center">
+                <div className="space-y-1">
+                  <Skeleton className="h-3 w-12" />
+                  <Skeleton className="h-6 w-24" />
+                </div>
+                <Skeleton className="w-8 h-8 rounded" />
+              </div>
+            </div>
+          ))
+        ) : expenses.length > 0 ? (
           expenses.map((expense) => (
             <div key={expense.id} className="glass-card p-5 flex flex-col hover:border-red-200">
               <div className="flex items-start justify-between mb-4">
@@ -170,9 +220,29 @@ const Expenses = () => {
           </form>
         </div>
       )}
+
+      {/* Feedback UI */}
+      <div className="fixed bottom-6 right-6 z-[300] flex flex-col gap-2">
+        {toast.show && (
+          <Toast 
+            message={toast.message} 
+            type={toast.type} 
+            onClose={() => setToast({ ...toast, show: false })} 
+          />
+        )}
+      </div>
+
+      <ConfirmModal 
+        isOpen={confirm.isOpen}
+        onClose={() => setConfirm({ ...confirm, isOpen: false })}
+        onConfirm={executeDelete}
+        title="Hapus Pengeluaran"
+        message="Apakah Anda yakin ingin menghapus catatan pengeluaran ini? Tindakan ini tidak dapat dibatalkan."
+        confirmText="Ya, Hapus"
+        type="danger"
+      />
     </div>
   );
 };
-
 
 export default Expenses;
