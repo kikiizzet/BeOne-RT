@@ -52,7 +52,7 @@ const Dashboard = () => {
       });
       
       // Filter out trailing zero months if we only want up to current month or let it show all year
-      // Showing all 12 months is standard for a yearly view
+      // Showing all 12 months is standard for a yearly vieww
       setChartData(formatted);
     } catch (error) {
       console.error(error);
