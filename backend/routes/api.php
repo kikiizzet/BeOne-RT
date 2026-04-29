@@ -11,6 +11,7 @@ Route::apiResource('residents', ResidentController::class);
 
 Route::apiResource('houses', HouseController::class);
 Route::post('houses/{house}/assign', [HouseController::class, 'assignResident']);
+Route::post('houses/{house}/checkout', [HouseController::class, 'checkoutResident']);
 
 Route::get('payments', [PaymentController::class, 'index']);
 Route::get('payments/billing-status', [PaymentController::class, 'billingStatus']);

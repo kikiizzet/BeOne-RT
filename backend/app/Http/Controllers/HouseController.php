@@ -49,6 +49,7 @@ class HouseController extends Controller
         $validated = $request->validate([
             'resident_id' => 'required|exists:residents,id',
             'start_date' => 'required|date',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
         ]);
 
         // Mark current resident as old
@@ -61,12 +62,28 @@ class HouseController extends Controller
             'house_id' => $house->id,
             'resident_id' => $validated['resident_id'],
             'start_date' => $validated['start_date'],
+            'end_date' => $validated['end_date'] ?? null,
             'is_current' => true,
         ]);
 
         $house->update(['status' => 'dihuni']);
 
         return response()->json($houseResident, 201);
+    }
+
+    public function checkoutResident(House $house)
+    {
+        // Mark current resident as old
+        HouseResident::where('house_id', $house->id)
+            ->where('is_current', true)
+            ->update([
+                'is_current' => false, 
+                'end_date' => now()
+            ]);
+
+        $house->update(['status' => 'tidak_dihuni']);
+
+        return response()->json(['message' => 'Resident checked out successfully']);
     }
 
     public function destroy(House $house)
