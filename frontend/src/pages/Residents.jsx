@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, MoreVertical, Edit2, Trash2, Phone, UserCheck, Loader2 } from 'lucide-react';
+import { Plus, Search, MoreVertical, Edit2, Trash2, Phone, UserCheck, Loader2, Download } from 'lucide-react';
+import { downloadCSV } from '../utils/exportUtils';
 import api from '../api/axios';
 import ConfirmModal from '../components/ConfirmModal';
 import Toast from '../components/Toast';
@@ -116,26 +117,44 @@ const Residents = () => {
     r.phone_number.includes(searchTerm)
   );
 
+  const handleExport = () => {
+    const headers = ['Full Name', 'Status', 'Phone Number', 'Is Married'];
+    const exportData = filteredResidents.map(r => ({
+      full_name: r.full_name,
+      status: r.status,
+      phone_number: r.phone_number,
+      is_married: r.is_married ? 'Yes' : 'No'
+    }));
+    downloadCSV(exportData, 'Data_Warga', headers);
+  };
+
   const STORAGE_URL = 'http://localhost:8000/storage';
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-main">Data Warga</h1>
           <p className="text-text-muted mt-1 text-sm">Kelola informasi penghuni perumahan</p>
         </div>
-        <button 
-          onClick={() => {
-            setIsEditing(false);
-            setFormData({ full_name: '', status: 'tetap', phone_number: '', is_married: false, photo: null, ktp_image: null });
-            setShowModal(true);
-          }}
-          className="btn-primary"
-        >
-          <Plus size={18} />
-          Tambah Warga
-        </button>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <button onClick={handleExport} className="btn-secondary flex-1 sm:flex-none flex items-center justify-center gap-2">
+            <Download size={18} />
+            <span className="hidden xs:inline">Ekspor Excel</span>
+            <span className="xs:hidden">Ekspor</span>
+          </button>
+          <button 
+            onClick={() => {
+              setIsEditing(false);
+              setFormData({ full_name: '', status: 'tetap', phone_number: '', is_married: false, photo: null, ktp_image: null });
+              setShowModal(true);
+            }}
+            className="btn-primary flex-1 sm:flex-none justify-center"
+          >
+            <Plus size={18} />
+            Tambah
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-4 glass-card p-3">

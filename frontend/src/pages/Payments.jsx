@@ -1,16 +1,20 @@
 import React, { useEffect, useState } from 'react';
-import { CreditCard, CheckCircle, Filter, Plus, Trash2, AlertCircle, Loader2 } from 'lucide-react';
+import { CreditCard, CheckCircle, Filter, Plus, Trash2, AlertCircle, Loader2, TrendingUp, Users, XCircle, Download, MessageSquare } from 'lucide-react';
+import { downloadCSV } from '../utils/exportUtils';
 import api from '../api/axios';
 import ConfirmModal from '../components/ConfirmModal';
 import Toast from '../components/Toast';
 import Skeleton from '../components/Skeleton';
 
 const Payments = () => {
-  const [activeTab, setActiveTab] = useState('status'); // 'history' or 'status'
+  const [activeTab, setActiveTab] = useState('status'); // 'status', 'history', 'unpaid'
   const [payments, setPayments] = useState([]);
   const [billingStatus, setBillingStatus] = useState([]);
   const [customTypes, setCustomTypes] = useState([]);
+  const [summary, setSummary] = useState({});
+  const [unpaidByType, setUnpaidByType] = useState({});
   const [houses, setHouses] = useState([]);
+  const [selectedKeys, setSelectedKeys] = useState([]); // format: "houseId_feeType"
   const [showModal, setShowModal] = useState(false);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -88,6 +92,8 @@ const Payments = () => {
       const res = await api.get(`/payments/billing-status?month=${currentMonth}&year=${currentYear}`);
       setBillingStatus(res.data.status);
       setCustomTypes(res.data.custom_types);
+      setSummary(res.data.summary || {});
+      setUnpaidByType(res.data.unpaid_by_type || {});
     } catch (error) {
       console.error(error);
     }
@@ -99,6 +105,75 @@ const Payments = () => {
       setHouses(res.data.filter(h => h.status === 'dihuni'));
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const handleExport = () => {
+    const headers = ['Unit', 'Penghuni', 'Jenis', 'Periode', 'Nominal', 'Status'];
+    const exportData = payments.map(p => ({
+      unit: p.house.house_number,
+      penghuni: p.resident.full_name,
+      jenis: p.fee_type,
+      periode: `${months[p.month - 1]} ${p.year}`,
+      nominal: p.amount,
+      status: p.status
+    }));
+    downloadCSV(exportData, `Riwayat_Iuran_${months[currentMonth-1]}_${currentYear}`, headers);
+  };
+
+  const handleWhatsAppReminder = (item, type) => {
+    const name = item.resident?.full_name || 'Warga';
+    const phone = item.resident?.phone_number;
+    
+    if (!phone) {
+      showToast('Nomor WhatsApp tidak tersedia', 'error');
+      return;
+    }
+
+    const feeAmount = summary[type]?.fee_amount || 0;
+    const monthName = months[currentMonth - 1];
+    
+    const message = `Halo Bapak/Ibu ${name},\n\nKami menginformasikan tagihan *${type.toUpperCase()}* untuk bulan *${monthName} ${currentYear}* sebesar *Rp ${feeAmount.toLocaleString('id-ID')}*.\n\nMohon dapat segera melakukan pembayaran melalui pengurus RT. Terima kasih. 🙏`;
+    
+    // Clean phone number (remove +, spaces, etc)
+    const cleanPhone = phone.replace(/\D/g, '');
+    const finalPhone = cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : cleanPhone;
+    
+    const url = `https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
+  const toggleSelection = (houseId, feeType) => {
+    const key = `${houseId}_${feeType}`;
+    setSelectedKeys(prev => 
+      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+    );
+  };
+
+  const handleBulkConfirmSelected = async () => {
+    if (selectedKeys.length === 0) return;
+    setLoading(true);
+    try {
+      const selections = selectedKeys.map(key => {
+        const [house_id, fee_type] = key.split('_');
+        return { house_id, fee_type };
+      });
+
+      await api.post('/payments/bulk-confirm-selected', { 
+        selections,
+        month: currentMonth,
+        year: currentYear
+      });
+
+      showToast(`${selectedKeys.length} tagihan berhasil dikonfirmasi`);
+      setSelectedKeys([]);
+      fetchBillingStatus();
+      fetchPayments();
+    } catch (error) {
+      console.error(error);
+      showToast('Gagal mengkonfirmasi tagihan', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -294,20 +369,32 @@ const Payments = () => {
   return (
     <div className="space-y-6">
       {/* ... header and tabs ... */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-main">Iuran Bulanan</h1>
           <p className="text-text-muted mt-1 text-sm">Monitoring dan penagihan iuran warga</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => { setBulkData({ ...bulkData, month: currentMonth, year: currentYear }); setShowBulkModal(true); }} className="px-4 py-2 bg-purple-50 text-purple-600 border border-purple-100 rounded-md text-sm font-bold hover:bg-purple-100 transition-colors">Tagihan Kustom</button>
-          <button onClick={() => { setFormData({ ...formData, month: currentMonth, year: currentYear }); setShowModal(true); }} className="btn-primary"><Plus size={18} /> Catat Manual</button>
+        <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full lg:w-auto">
+          <button onClick={handleExport} className="btn-secondary flex-1 sm:flex-none flex items-center justify-center gap-2">
+            <Download size={18} />
+            <span className="hidden xs:inline">Ekspor</span>
+          </button>
+          <button onClick={() => { setBulkData({ ...bulkData, month: currentMonth, year: currentYear }); setShowBulkModal(true); }} className="flex-1 sm:flex-none px-4 py-2 bg-purple-50 text-purple-600 border border-purple-100 rounded-md text-sm font-bold hover:bg-purple-100 transition-colors whitespace-nowrap text-center">Tagihan Kustom</button>
+          <button onClick={() => { setFormData({ ...formData, month: currentMonth, year: currentYear }); setShowModal(true); }} className="btn-primary flex-1 sm:flex-none justify-center whitespace-nowrap"><Plus size={18} /> <span className="hidden xs:inline">Catat Manual</span><span className="xs:hidden">Catat</span></button>
         </div>
       </div>
 
       <div className="flex items-center gap-4 bg-white p-1 rounded-lg border border-border w-fit">
         <button onClick={() => setActiveTab('status')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'status' ? 'bg-primary text-white shadow-sm' : 'text-text-muted hover:text-text-main'}`}>Status Tagihan</button>
         <button onClick={() => setActiveTab('history')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${activeTab === 'history' ? 'bg-primary text-white shadow-sm' : 'text-text-muted hover:text-text-main'}`}>Riwayat Transaksi</button>
+        <button onClick={() => setActiveTab('unpaid')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all flex items-center gap-1.5 ${activeTab === 'unpaid' ? 'bg-red-500 text-white shadow-sm' : 'text-text-muted hover:text-text-main'}`}>
+          Belum Bayar
+          {Object.values(unpaidByType).reduce((a, arr) => a + (arr?.length || 0), 0) > 0 && (
+            <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${activeTab === 'unpaid' ? 'bg-white/30 text-white' : 'bg-red-100 text-red-600'}`}>
+              {Object.values(unpaidByType).reduce((a, arr) => a + (arr?.length || 0), 0)}
+            </span>
+          )}
+        </button>
       </div>
 
       <div className="flex items-center gap-3 mb-2">
@@ -317,7 +404,83 @@ const Payments = () => {
         <input type="number" className="bg-white border border-border rounded px-3 py-1.5 text-sm font-medium w-24 outline-none focus:border-primary" value={currentYear} onChange={(e) => setCurrentYear(parseInt(e.target.value))} />
       </div>
 
-      {activeTab === 'status' ? (
+      {/* Progress Summary Cards */}
+      {(activeTab === 'status' || activeTab === 'unpaid') && !loading && Object.keys(summary).length > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {['satpam', 'kebersihan', ...customTypes].map(type => {
+            const s = summary[type];
+            if (!s) return null;
+            return (
+              <div key={type} className="glass-card p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-text-muted">{type}</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    s.percentage === 100 ? 'bg-green-100 text-green-700' :
+                    s.percentage >= 50  ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-600'
+                  }`}>{s.percentage}%</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-1.5 mb-2">
+                  <div
+                    className={`h-1.5 rounded-full transition-all ${
+                      s.percentage === 100 ? 'bg-green-500' :
+                      s.percentage >= 50  ? 'bg-yellow-400' : 'bg-red-400'
+                    }`}
+                    style={{ width: `${s.percentage}%` }}
+                  />
+                </div>
+                <p className="text-xs font-bold text-text-main">{s.paid}/{s.total} Rumah Lunas</p>
+                <p className="text-[10px] text-text-muted mt-0.5">
+                  Rp {parseFloat(s.collected_amount).toLocaleString('id-ID')} / Rp {parseFloat(s.target_amount).toLocaleString('id-ID')}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {activeTab === 'unpaid' ? (
+        <div className="space-y-4">
+          {['satpam', 'kebersihan', ...customTypes].map(type => {
+            const list = unpaidByType[type] || [];
+            if (list.length === 0) return null;
+            return (
+              <div key={type} className="glass-card overflow-hidden">
+                <div className="px-6 py-3 bg-red-50 border-b border-red-100 flex items-center justify-between">
+                  <h4 className="text-sm font-bold text-red-700 uppercase tracking-wider">{type}</h4>
+                  <span className="text-[10px] font-bold bg-red-100 text-red-600 px-2 py-0.5 rounded-full">{list.length} belum bayar</span>
+                </div>
+                <div className="divide-y divide-border">
+                  {list.map(item => (
+                    <div key={item.house_id} className="px-6 py-3 flex items-center gap-3">
+                      <div className="w-7 h-7 rounded bg-red-50 text-red-600 flex items-center justify-center text-xs font-bold border border-red-100">#{item.house_number}</div>
+                      <div>
+                        <p className="text-sm font-bold text-text-main">{item.resident?.full_name || '-'}</p>
+                        <p className="text-[10px] text-text-muted">Unit No. {item.house_number}</p>
+                      </div>
+                      <div className="ml-auto flex items-center gap-2">
+                        <button 
+                          onClick={() => handleWhatsAppReminder(item, type)}
+                          className="p-2 rounded-lg bg-green-50 text-green-600 hover:bg-green-600 hover:text-white transition-all flex items-center gap-1.5 text-[10px] font-bold border border-green-100"
+                        >
+                          <MessageSquare size={14} />
+                          Tagih WA
+                        </button>
+                        <XCircle size={16} className="text-red-400" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {Object.values(unpaidByType).every(arr => arr.length === 0) && (
+            <div className="glass-card p-12 flex flex-col items-center justify-center text-center">
+              <CheckCircle size={32} className="text-green-400 mb-2" />
+              <p className="font-bold text-green-600">Semua rumah sudah lunas bulan ini!</p>
+            </div>
+          )}
+        </div>
+      ) : activeTab === 'status' ? (
         <div className="glass-card overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[800px]">
@@ -359,7 +522,15 @@ const Payments = () => {
                             <CheckCircle size={10} /> Lunas
                           </span>
                         ) : (
-                          <button disabled={!item.resident} onClick={() => handleConfirmPayment(item.house_id, item.resident.id, key, item.fees[key].amount, item.fees[key].payment_id)} className="text-[9px] font-bold uppercase bg-blue-50 text-blue-600 px-2.5 py-0.5 rounded border border-blue-100 hover:bg-blue-600 hover:text-white transition-all disabled:opacity-30">Konfirmasi</button>
+                          <label className="inline-flex items-center gap-2 cursor-pointer group">
+                            <input 
+                              type="checkbox" 
+                              className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary"
+                              checked={selectedKeys.includes(`${item.house_id}_${key}`)}
+                              onChange={() => toggleSelection(item.house_id, key)}
+                            />
+                            <span className="text-[9px] font-bold text-text-muted group-hover:text-primary transition-colors uppercase">Pilih</span>
+                          </label>
                         )}
                       </td>
                     ))}
@@ -369,8 +540,16 @@ const Payments = () => {
                           <span className="inline-flex items-center gap-1 text-green-600 font-bold text-[9px] uppercase bg-green-50 px-2 py-0.5 rounded border border-green-100">
                             <CheckCircle size={10} /> Lunas
                           </span>
-                        ) : item.fees[type].status === 'pending' ? (
-                          <button onClick={() => handleConfirmPayment(item.house_id, item.resident.id, type, item.fees[type].amount, item.fees[type].payment_id)} className="text-[9px] font-bold uppercase bg-purple-50 text-purple-600 px-2.5 py-0.5 rounded border border-purple-100 hover:bg-purple-600 hover:text-white transition-all disabled:opacity-30">Konfirmasi</button>
+                        ) : item.fees[type].status === 'pending' || item.fees[type].status === 'none' ? (
+                          <label className="inline-flex items-center gap-2 cursor-pointer group">
+                            <input 
+                              type="checkbox" 
+                              className="w-3.5 h-3.5 rounded border-border text-primary focus:ring-primary"
+                              checked={selectedKeys.includes(`${item.house_id}_${type}`)}
+                              onChange={() => toggleSelection(item.house_id, type)}
+                            />
+                            <span className="text-[9px] font-bold text-text-muted group-hover:text-primary transition-colors uppercase">Pilih</span>
+                          </label>
                         ) : (
                           <span className="text-[9px] text-text-muted italic">-</span>
                         )}
@@ -515,6 +694,35 @@ const Payments = () => {
         confirmText="Ya, Lanjutkan"
         type={confirm.title.includes('Hapus') ? 'danger' : 'primary'}
       />
+
+      {/* Floating Action Bar for Selection */}
+      {selectedKeys.length > 0 && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[200] animate-in slide-in-from-bottom-10 duration-300">
+          <div className="bg-gray-900 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-8 border border-white/10 backdrop-blur-xl">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold text-white/50 uppercase tracking-widest text-center sm:text-left">Terpilih</span>
+              <span className="text-lg font-bold">{selectedKeys.length} Tagihan</span>
+            </div>
+            <div className="h-10 w-px bg-white/10 hidden sm:block" />
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setSelectedKeys([])}
+                className="px-4 py-2 rounded-xl text-sm font-bold hover:bg-white/10 transition-colors"
+              >
+                Batal
+              </button>
+              <button 
+                onClick={handleBulkConfirmSelected}
+                disabled={loading}
+                className="btn-primary py-2.5 px-6 rounded-xl shadow-lg shadow-primary/20"
+              >
+                {loading ? <Loader2 className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                Konfirmasi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

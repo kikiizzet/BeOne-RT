@@ -6,5 +6,5 @@ use Illuminate\Database\Eloquent\Model;
 
 class Expense extends Model
 {
-    protected $fillable = ['description', 'amount', 'expense_date'];
+    protected $fillable = ['description', 'category', 'amount', 'expense_date', 'is_recurring'];
 }

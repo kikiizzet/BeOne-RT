@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Home, UserPlus, History, CheckCircle2, XCircle, Trash2, LogOut, Calendar } from 'lucide-react';
+import { Home, UserPlus, History, CheckCircle2, XCircle, Trash2, LogOut, Calendar, Clock, Users, Download } from 'lucide-react';
+import { downloadCSV } from '../utils/exportUtils';
 import api from '../api/axios';
 import ConfirmModal from '../components/ConfirmModal';
 import Toast from '../components/Toast';
@@ -11,6 +12,8 @@ const Houses = () => {
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedHouse, setSelectedHouse] = useState(null);
+  const [houseDetail, setHouseDetail] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({ 
     resident_id: '', 
@@ -51,6 +54,21 @@ const Houses = () => {
       setResidents(res.data);
     } catch (error) {
       console.error(error);
+    }
+  };
+
+  const openDetailModal = async (house) => {
+    setSelectedHouse(house);
+    setShowDetailModal(true);
+    setHouseDetail(null);
+    setDetailLoading(true);
+    try {
+      const res = await api.get(`/houses/${house.id}`);
+      setHouseDetail(res.data);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setDetailLoading(false);
     }
   };
 
@@ -116,11 +134,29 @@ const Houses = () => {
     return new Date(dateString).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
   };
 
+  const handleExport = () => {
+    const headers = ['House Number', 'Status', 'Current Resident', 'Resident Status'];
+    const exportData = houses.map(h => ({
+      house_number: h.house_number,
+      status: h.status,
+      current_resident: h.residents?.[0]?.full_name || '-',
+      resident_status: h.residents?.[0]?.status || '-'
+    }));
+    downloadCSV(exportData, 'Data_Rumah', headers);
+  };
+
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-bold text-text-main">Data Rumah</h1>
-        <p className="text-text-muted mt-1 text-sm">Status hunian dan manajemen penyewa</p>
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-text-main">Data Rumah</h1>
+          <p className="text-text-muted mt-1 text-sm">Status hunian dan manajemen penyewa</p>
+        </div>
+        <button onClick={handleExport} className="btn-secondary w-full sm:w-auto flex items-center justify-center gap-2">
+          <Download size={18} />
+          <span className="hidden xs:inline">Ekspor Excel</span>
+          <span className="xs:hidden">Ekspor</span>
+        </button>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -223,7 +259,7 @@ const Houses = () => {
                     </button>
                   )}
                   <button 
-                    onClick={() => { setSelectedHouse(house); setShowDetailModal(true); }}
+                    onClick={() => openDetailModal(house)}
                     className="px-3 py-1.5 rounded bg-white text-text-main text-[10px] font-bold uppercase hover:bg-gray-50 transition-all border border-border"
                   >
                     Detail
@@ -357,7 +393,43 @@ const Houses = () => {
                     <DetailItem label="Kontak" value={selectedHouse.residents[0].phone_number || '-'} />
                     <DetailItem label="Pernikahan" value={selectedHouse.residents[0].is_married ? 'Menikah' : 'Single'} />
                   </div>
+
+                  {/* Riwayat Hunian Sebelumnya */}
+                  <div>
+                    <h5 className="text-[11px] font-bold text-text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
+                      <Clock size={12} /> Riwayat Hunian Sebelumnya
+                    </h5>
+                    {detailLoading ? (
+                      <div className="space-y-2">
+                        {[1,2].map(i => <div key={i} className="h-12 bg-gray-100 rounded animate-pulse" />)}
+                      </div>
+                    ) : houseDetail && houseDetail.residents && houseDetail.residents.filter(r => !r.pivot.is_current).length > 0 ? (
+                      <div className="space-y-2">
+                        {houseDetail.residents.filter(r => !r.pivot.is_current).map((r, idx) => (
+                          <div key={idx} className="flex items-start gap-3 p-2.5 rounded-lg bg-gray-50 border border-border">
+                            <div className="w-6 h-6 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-[10px] font-bold flex-shrink-0 mt-0.5">
+                              {r.full_name?.charAt(0)}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-text-main truncate">{r.full_name}</p>
+                              <p className="text-[10px] text-text-muted">
+                                {formatDate(r.pivot.start_date)} — {formatDate(r.pivot.end_date) || 'sekarang'}
+                              </p>
+                            </div>
+                            <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 ${
+                              r.status === 'tetap' ? 'bg-blue-100 text-blue-700' : 'bg-yellow-100 text-yellow-700'
+                            }`}>{r.status}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-text-muted italic text-center py-3 bg-gray-50 rounded-lg border border-dashed border-border">
+                        Belum ada riwayat penghuni sebelumnya
+                      </p>
+                    )}
+                  </div>
                 </div>
+
               ) : (
                 <div className="py-10 text-center space-y-2">
                   <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto text-gray-300">

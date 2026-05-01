@@ -28,10 +28,14 @@ class HouseController extends Controller
 
     public function show(House $house)
     {
-        return response()->json($house->load(['residents' => function($q) {
-            $q->orderByPivot('created_at', 'desc');
-        }]));
+        $house->load(['residents' => function($q) {
+            $q->orderByPivot('created_at', 'desc')
+              ->withPivot('start_date', 'end_date', 'is_current');
+        }]);
+
+        return response()->json($house);
     }
+
 
     public function update(Request $request, House $house)
     {

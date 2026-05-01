@@ -19,6 +19,8 @@
   --color-text-muted: #6c757d;
   
   --font-sans: 'Inter', sans-serif;
+
+  --breakpoint-xs: 480px;
 }
 
 @layer base {
@@ -63,6 +65,15 @@
   .sidebar-link.active {
     @apply bg-primary text-white hover:bg-primary-hover hover:text-white;
   }
+}
+
+.animate-spin-slow {
+  animation: spin 3s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 /* Scrollbar */

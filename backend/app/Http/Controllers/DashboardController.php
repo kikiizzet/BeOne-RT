@@ -17,6 +17,7 @@ class DashboardController extends Controller
         $occupiedHouses = House::where('status', 'dihuni')->count();
         $totalIncome = Payment::where('status', 'paid')->sum('amount');
         $totalExpenses = Expense::sum('amount');
+        $totalHouses = House::count();
         $balance = $totalIncome - $totalExpenses;
 
         $currentMonth = date('n');
@@ -63,6 +64,7 @@ class DashboardController extends Controller
         return response()->json([
             'total_residents' => $totalResidents,
             'occupied_houses' => $occupiedHouses,
+            'total_houses' => $totalHouses,
             'total_income' => $totalIncome,
             'total_expenses' => $totalExpenses,
             'balance' => $balance,

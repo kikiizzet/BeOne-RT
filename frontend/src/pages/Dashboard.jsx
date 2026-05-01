@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  Users, Home, TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, Loader2 
+  Users, Home, TrendingUp, Wallet, ArrowUpRight, ArrowDownRight, Loader2, Plus, CreditCard, FileText, Activity
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
@@ -16,6 +16,7 @@ const Dashboard = () => {
   const [summary, setSummary] = useState({
     total_residents: 0,
     occupied_houses: 0,
+    total_houses: 0,
     total_income: 0,
     total_expenses: 0,
     balance: 0,
@@ -66,7 +67,7 @@ const Dashboard = () => {
 
   const stats = [
     { label: 'Total Warga', value: summary.total_residents, icon: <Users size={20} />, color: 'bg-blue-100 text-blue-600', path: '/residents' },
-    { label: 'Total Saldo', value: `Rp ${parseFloat(summary.balance || 0).toLocaleString('id-ID')}`, icon: <Wallet size={20} />, color: 'bg-purple-100 text-purple-600', path: '/payments' },
+    { label: 'Okupansi Rumah', value: `${summary.occupied_houses}/${summary.total_houses}`, icon: <Home size={20} />, color: 'bg-orange-100 text-orange-600', path: '/houses' },
     { label: 'Pemasukan', value: `Rp ${parseFloat(summary.total_income || 0).toLocaleString('id-ID')}`, icon: <TrendingUp size={20} />, color: 'bg-green-100 text-green-600', path: '/payments' },
     { label: 'Pengeluaran', value: `Rp ${parseFloat(summary.total_expenses || 0).toLocaleString('id-ID')}`, icon: <TrendingUp size={20} className="rotate-180" />, color: 'bg-red-100 text-red-600', path: '/expenses' },
   ];
@@ -81,7 +82,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {loading ? (
           [...Array(4)].map((_, i) => (
-            <div key={i} className="glass-card p-4 flex items-center gap-4">
+            <div key={i} className="glass-card p-4 flex items-center gap-4 shadow-sm">
               <Skeleton className="w-12 h-12 rounded-lg" />
               <div className="space-y-2 flex-1">
                 <Skeleton className="h-3 w-1/2" />
@@ -90,22 +91,79 @@ const Dashboard = () => {
             </div>
           ))
         ) : (
-          stats.map((stat, i) => (
-            <div 
-              key={i} 
-              onClick={() => navigate(stat.path)}
-              className="glass-card p-4 flex items-center gap-4 cursor-pointer hover:border-primary group transition-all"
-            >
-              <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                {stat.icon}
+          <>
+            <div className="glass-card p-4 flex items-center gap-4 bg-primary text-white shadow-lg shadow-primary/20">
+              <div className="w-12 h-12 rounded-lg bg-white/20 flex items-center justify-center">
+                <Wallet size={24} />
               </div>
               <div>
-                <p className="text-xs text-text-muted font-medium">{stat.label}</p>
-                <h3 className="text-xl font-bold text-text-main">{stat.value}</h3>
+                <p className="text-[10px] text-white/70 font-bold uppercase tracking-wider">Saldo Kas RT</p>
+                <h3 className="text-xl font-bold">Rp {parseFloat(summary.balance || 0).toLocaleString('id-ID')}</h3>
               </div>
             </div>
-          ))
+            {stats.slice(0, 3).map((stat, i) => (
+              <div 
+                key={i} 
+                onClick={() => navigate(stat.path)}
+                className="glass-card p-4 flex items-center gap-4 cursor-pointer hover:border-primary group transition-all shadow-sm"
+              >
+                <div className={`w-12 h-12 rounded-lg ${stat.color} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                  {stat.icon}
+                </div>
+                <div>
+                  <p className="text-xs text-text-muted font-medium">{stat.label}</p>
+                  <h3 className="text-xl font-bold text-text-main">{stat.value}</h3>
+                </div>
+              </div>
+            ))}
+          </>
         )}
+      </div>
+
+      {/* Quick Actions & Welcome */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 glass-card p-6 flex flex-col md:flex-row items-center gap-6 bg-gradient-to-br from-white to-blue-50/30">
+          <div className="flex-1 space-y-2 text-center md:text-left">
+            <h2 className="text-xl font-bold text-text-main">Selamat Datang, Pengurus RT! 👋</h2>
+            <p className="text-sm text-text-muted max-w-md">Pantau keuangan dan data warga Anda dengan lebih mudah. Apa yang ingin Anda lakukan hari ini?</p>
+            <div className="flex flex-wrap gap-3 pt-2 justify-center md:justify-start">
+              <button onClick={() => navigate('/residents')} className="btn-primary py-2 px-4 text-xs">
+                <Plus size={14} /> Tambah Warga
+              </button>
+              <button onClick={() => navigate('/payments')} className="bg-white border border-border px-4 py-2 rounded-lg text-xs font-bold text-text-main hover:bg-gray-50 flex items-center gap-2 shadow-sm">
+                <CreditCard size={14} className="text-blue-500" /> Catat Iuran
+              </button>
+              <button onClick={() => navigate('/reports')} className="bg-white border border-border px-4 py-2 rounded-lg text-xs font-bold text-text-main hover:bg-gray-50 flex items-center gap-2 shadow-sm">
+                <FileText size={14} className="text-purple-500" /> Lihat Laporan
+              </button>
+            </div>
+          </div>
+          <div className="w-32 h-32 md:w-40 md:h-40 flex items-center justify-center bg-blue-100 rounded-full border-4 border-white shadow-inner">
+             <Activity size={60} className="text-blue-600 animate-pulse" />
+          </div>
+        </div>
+        
+        <div className="glass-card p-6 flex flex-col justify-center bg-gray-900 text-white">
+          <div className="flex items-center gap-3 mb-4">
+             <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
+                <Users size={20} className="text-blue-400" />
+             </div>
+             <div>
+                <p className="text-[10px] text-white/50 font-bold uppercase tracking-widest">Penagihan</p>
+                <h4 className="text-lg font-bold">Kolektibilitas</h4>
+             </div>
+          </div>
+          <div className="space-y-4">
+             <div className="flex items-center justify-between text-xs">
+                <span className="text-white/70">Sudah Bayar</span>
+                <span className="font-bold text-green-400">85%</span>
+             </div>
+             <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden">
+                <div className="bg-green-500 h-full w-[85%] rounded-full shadow-[0_0_10px_rgba(34,197,94,0.5)]"></div>
+             </div>
+             <p className="text-[10px] text-white/40 italic">*Berdasarkan target iuran bulan berjalan</p>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -175,6 +233,29 @@ const Dashboard = () => {
               <span className={`text-[10px] text-white px-1.5 py-0.5 rounded font-bold uppercase ${summary.pending_payments > 0 ? 'bg-orange-500' : 'bg-green-500'}`}>
                 {summary.pending_payments > 0 ? 'PERHATIAN' : 'LANCAR'}
               </span>
+            </div>
+
+            <div className="p-3 rounded-lg bg-gray-50 border border-border space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded bg-blue-100 text-blue-600 flex items-center justify-center">
+                    <Home size={16} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-text-muted font-medium">Okupansi Rumah</p>
+                    <p className="text-xs text-text-main font-bold">{summary.occupied_houses} dari {summary.total_houses} Unit</p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold text-blue-600">
+                  {summary.total_houses > 0 ? Math.round((summary.occupied_houses / summary.total_houses) * 100) : 0}%
+                </span>
+              </div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
+                <div 
+                  className="bg-blue-500 h-1.5 rounded-full transition-all duration-500" 
+                  style={{ width: `${summary.total_houses > 0 ? (summary.occupied_houses / summary.total_houses) * 100 : 0}%` }}
+                ></div>
+              </div>
             </div>
 
             <div className="p-3 rounded-lg bg-gray-50 border border-border flex items-center justify-between">

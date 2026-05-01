@@ -18,6 +18,7 @@ Route::get('payments/billing-status', [PaymentController::class, 'billingStatus'
 Route::post('payments', [PaymentController::class, 'store']);
 Route::post('payments/bulk', [PaymentController::class, 'bulkStore']);
 Route::post('payments/bulk-confirm', [PaymentController::class, 'bulkConfirm']);
+Route::post('payments/bulk-confirm-selected', [PaymentController::class, 'bulkConfirmSelected']);
 Route::put('payments/{payment}/confirm', [PaymentController::class, 'confirm']);
 Route::delete('payments/bulk-delete', [PaymentController::class, 'destroyAll']);
 Route::delete('payments/{payment}', [PaymentController::class, 'destroy']);
